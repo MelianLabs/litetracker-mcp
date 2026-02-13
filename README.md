@@ -19,7 +19,7 @@ A Go-based [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) serv
 
 ## Prerequisites
 
-- [Go 1.21+](https://go.dev/dl/) installed
+- [Go 1.25+](https://go.dev/dl/) installed
 - [DuckDB](https://duckdb.org/docs/stable/guides/overview) installed (required for daemon/sync modes)
 - A [LiteTracker](https://app.litetracker.com) account with an API token
 
