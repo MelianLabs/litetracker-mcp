@@ -120,6 +120,3 @@ The server uses two authentication methods:
 
 This dual approach is necessary because LiteTracker's public API doesn't support write operations for comments, labels, or owner assignments.
 
-## License
-
-MIT
