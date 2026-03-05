@@ -13,9 +13,9 @@ A Go-based [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) serv
 | `get_story_comments` | Get comments for a story |
 | `create_story` | Create a new story |
 | `post_comment` | Post a comment on a story |
-| `find_member` | Search project members by name or initials to find their user ID |
+| `find_owner` | Search project members by name or initials to find their user ID |
 | `add_label` | Add a label to a story |
-| `add_owner` | Add an owner to a story (preserves existing) |
+| `add_owner` | Add an owner to a story by user_id or name (auto-resolves, preserves existing) |
 | `get_project_activity` | Get recent project activity |
 
 ## Prerequisites

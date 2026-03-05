@@ -139,9 +139,9 @@ func NewServer() *server.MCPServer {
 		),
 	), handleGetProjectActivity)
 
-	s.AddTool(mcp.NewTool("find_member",
+	s.AddTool(mcp.NewTool("find_owner",
 		mcp.WithDescription("Search for a project member by name or initials to find their user ID. Useful before add_owner."),
-		mcp.WithTitleAnnotation("Find Member"),
+		mcp.WithTitleAnnotation("Find Owner"),
 		mcp.WithNumber("project_id",
 			mcp.Description("LiteTracker project ID"),
 			mcp.Required(),
@@ -150,7 +150,7 @@ func NewServer() *server.MCPServer {
 			mcp.Description("Name or initials to search for (case-insensitive)"),
 			mcp.Required(),
 		),
-	), handleFindMember)
+	), handleFindOwner)
 
 	s.AddTool(mcp.NewTool("add_label",
 		mcp.WithDescription("Add a label to a story"),
@@ -170,7 +170,7 @@ func NewServer() *server.MCPServer {
 	), handleAddLabel)
 
 	s.AddTool(mcp.NewTool("add_owner",
-		mcp.WithDescription("Add an owner to a story"),
+		mcp.WithDescription("Add an owner to a story. Provide user_id directly, or provide name to auto-resolve via project memberships."),
 		mcp.WithTitleAnnotation("Add Owner"),
 		mcp.WithNumber("project_id",
 			mcp.Description("LiteTracker project ID"),
@@ -181,8 +181,10 @@ func NewServer() *server.MCPServer {
 			mcp.Required(),
 		),
 		mcp.WithNumber("user_id",
-			mcp.Description("User ID to add as owner (e.g. 568 for Robert)"),
-			mcp.Required(),
+			mcp.Description("User ID to add as owner (e.g. 568 for Robert). Optional if name is provided."),
+		),
+		mcp.WithString("name",
+			mcp.Description("Name or initials to resolve to a user ID (case-insensitive). Used when user_id is not provided."),
 		),
 	), handleAddOwner)
 
@@ -513,7 +515,39 @@ func handleGetProjectActivity(_ context.Context, req mcp.CallToolRequest) (*mcp.
 	return textResult(out)
 }
 
-func handleFindMember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func resolveOwnerID(projectID int, query string) (int, string, error) {
+	memberships, err := api.GetProjectMemberships(projectID)
+	if err != nil {
+		return 0, "", err
+	}
+
+	queryLower := strings.ToLower(query)
+	type match struct {
+		id   int
+		name string
+	}
+	var matches []match
+	for _, m := range memberships {
+		if strings.Contains(strings.ToLower(m.Person.Name), queryLower) ||
+			strings.EqualFold(m.Person.Initials, query) {
+			matches = append(matches, match{id: m.Person.ID, name: m.Person.Name})
+		}
+	}
+
+	if len(matches) == 0 {
+		return 0, "", fmt.Errorf("no owners found matching %q", query)
+	}
+	if len(matches) > 1 {
+		names := make([]string, len(matches))
+		for i, m := range matches {
+			names[i] = fmt.Sprintf("%s (id=%d)", m.name, m.id)
+		}
+		return 0, "", fmt.Errorf("multiple owners match %q: %s — provide user_id directly", query, strings.Join(names, ", "))
+	}
+	return matches[0].id, matches[0].name, nil
+}
+
+func handleFindOwner(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	projectID := getInt(req, "project_id")
 	query := getString(req, "query")
 	if projectID == 0 || query == "" {
@@ -526,17 +560,17 @@ func handleFindMember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	}
 
 	queryLower := strings.ToLower(query)
-	type memberResult struct {
+	type ownerResult struct {
 		ID       int    `json:"id"`
 		Name     string `json:"name"`
 		Initials string `json:"initials"`
 		Role     string `json:"role"`
 	}
-	var matches []memberResult
+	var matches []ownerResult
 	for _, m := range memberships {
 		if strings.Contains(strings.ToLower(m.Person.Name), queryLower) ||
 			strings.EqualFold(m.Person.Initials, query) {
-			matches = append(matches, memberResult{
+			matches = append(matches, ownerResult{
 				ID:       m.Person.ID,
 				Name:     m.Person.Name,
 				Initials: m.Person.Initials,
@@ -546,7 +580,7 @@ func handleFindMember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	}
 
 	if len(matches) == 0 {
-		return errResult(fmt.Errorf("no members found matching %q", query))
+		return errResult(fmt.Errorf("no owners found matching %q", query))
 	}
 	return textResult(matches)
 }
@@ -575,8 +609,20 @@ func handleAddOwner(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	projectID := getInt(req, "project_id")
 	storyID := getInt(req, "story_id")
 	userID := getInt(req, "user_id")
-	if projectID == 0 || storyID == 0 || userID == 0 {
-		return errResult(fmt.Errorf("project_id, story_id, and user_id are required"))
+	name := getString(req, "name")
+	if projectID == 0 || storyID == 0 {
+		return errResult(fmt.Errorf("project_id and story_id are required"))
+	}
+	if userID == 0 && name == "" {
+		return errResult(fmt.Errorf("either user_id or name is required"))
+	}
+	if userID == 0 {
+		resolved, resolvedName, err := resolveOwnerID(projectID, name)
+		if err != nil {
+			return errResult(err)
+		}
+		userID = resolved
+		_ = resolvedName
 	}
 
 	owners, err := api.WebAddOwner(projectID, storyID, userID)
