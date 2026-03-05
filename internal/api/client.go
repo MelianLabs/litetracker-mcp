@@ -135,6 +135,14 @@ func CreateStory(projectID int, params map[string]any) (Story, error) {
 	return decode[Story](resp)
 }
 
+func GetProjectMemberships(projectID int) ([]Membership, error) {
+	resp, err := request("GET", fmt.Sprintf("/projects/%d/memberships", projectID), nil)
+	if err != nil {
+		return nil, err
+	}
+	return decode[[]Membership](resp)
+}
+
 func GetProjectActivity(projectID int, occurredAfter string) ([]Activity, error) {
 	params := url.Values{}
 	params.Set("occurred_after", occurredAfter)

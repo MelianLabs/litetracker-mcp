@@ -109,3 +109,9 @@ type ListStoriesOpts struct {
 	State       string
 	Limit       int
 }
+
+type Membership struct {
+	Person Person `json:"person"`
+	Role   string `json:"role"`
+}
+
