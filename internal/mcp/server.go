@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -138,6 +139,19 @@ func NewServer() *server.MCPServer {
 		),
 	), handleGetProjectActivity)
 
+	s.AddTool(mcp.NewTool("find_member",
+		mcp.WithDescription("Search for a project member by name or initials to find their user ID. Useful before add_owner."),
+		mcp.WithTitleAnnotation("Find Member"),
+		mcp.WithNumber("project_id",
+			mcp.Description("LiteTracker project ID"),
+			mcp.Required(),
+		),
+		mcp.WithString("query",
+			mcp.Description("Name or initials to search for (case-insensitive)"),
+			mcp.Required(),
+		),
+	), handleFindMember)
+
 	s.AddTool(mcp.NewTool("add_label",
 		mcp.WithDescription("Add a label to a story"),
 		mcp.WithTitleAnnotation("Add Label"),
@@ -207,6 +221,9 @@ func getInt(req mcp.CallToolRequest, key string) int {
 		return int(n)
 	case int:
 		return n
+	case string:
+		i, _ := strconv.Atoi(n)
+		return i
 	default:
 		return 0
 	}
@@ -494,6 +511,44 @@ func handleGetProjectActivity(_ context.Context, req mcp.CallToolRequest) (*mcp.
 		}
 	}
 	return textResult(out)
+}
+
+func handleFindMember(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectID := getInt(req, "project_id")
+	query := getString(req, "query")
+	if projectID == 0 || query == "" {
+		return errResult(fmt.Errorf("project_id and query are required"))
+	}
+
+	memberships, err := api.GetProjectMemberships(projectID)
+	if err != nil {
+		return errResult(err)
+	}
+
+	queryLower := strings.ToLower(query)
+	type memberResult struct {
+		ID       int    `json:"id"`
+		Name     string `json:"name"`
+		Initials string `json:"initials"`
+		Role     string `json:"role"`
+	}
+	var matches []memberResult
+	for _, m := range memberships {
+		if strings.Contains(strings.ToLower(m.Person.Name), queryLower) ||
+			strings.EqualFold(m.Person.Initials, query) {
+			matches = append(matches, memberResult{
+				ID:       m.Person.ID,
+				Name:     m.Person.Name,
+				Initials: m.Person.Initials,
+				Role:     m.Role,
+			})
+		}
+	}
+
+	if len(matches) == 0 {
+		return errResult(fmt.Errorf("no members found matching %q", query))
+	}
+	return textResult(matches)
 }
 
 func handleAddLabel(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
